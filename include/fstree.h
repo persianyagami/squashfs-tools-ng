@@ -17,6 +17,22 @@
 #include "sqfs/predef.h"
 #include "compat.h"
 
+enum {
+	DIR_SCAN_KEEP_TIME = 0x01,
+
+	DIR_SCAN_ONE_FILESYSTEM = 0x02,
+
+	DIR_SCAN_NO_RECURSION = 0x04,
+
+	DIR_SCAN_NO_SOCK = 0x0008,
+	DIR_SCAN_NO_SLINK = 0x0010,
+	DIR_SCAN_NO_FILE = 0x0020,
+	DIR_SCAN_NO_BLK = 0x0040,
+	DIR_SCAN_NO_DIR = 0x0080,
+	DIR_SCAN_NO_CHR = 0x0100,
+	DIR_SCAN_NO_FIFO = 0x0200,
+};
+
 #define FSTREE_MODE_HARD_LINK (0)
 #define FSTREE_MODE_HARD_LINK_RESOLVED (1)
 
@@ -24,6 +40,15 @@ typedef struct tree_node_t tree_node_t;
 typedef struct file_info_t file_info_t;
 typedef struct dir_info_t dir_info_t;
 typedef struct fstree_t fstree_t;
+
+/*
+  Optionally used by fstree_from_dir and fstree_from_subdir to
+  execute custom actions for each discovered node.
+
+  If it returns a value > 0, the new node is discarded, if < 0, scanning is
+  aborted and returns a failure status.
+ */
+typedef int (*scan_node_callback)(void *user, fstree_t *fs, tree_node_t *node);
 
 /* Additional meta data stored in a tree_node_t for regular files. */
 struct file_info_t {
@@ -33,7 +58,7 @@ struct file_info_t {
 	/* Path to the input file. */
 	char *input_file;
 
-	void *user_ptr;
+	sqfs_inode_generic_t *inode;
 };
 
 /* Additional meta data stored in a tree_node_t for directories */
@@ -153,15 +178,13 @@ tree_node_t *fstree_add_generic(fstree_t *fs, const char *path,
   tree from it. File input paths are interpreted as relative to the current
   working directory.
 
-  Data is read from the given file pointer. The filename is only used for
-  producing error messages.
-
   On failure, an error report with filename and line number is written
   to stderr.
 
   Returns 0 on success.
  */
-int fstree_from_file(fstree_t *fs, const char *filename, FILE *fp);
+int fstree_from_file(fstree_t *fs, const char *filename,
+		     const char *basepath);
 
 /*
   This function performs all the necessary post processing steps on the file
@@ -232,5 +255,23 @@ tree_node_t *fstree_add_hard_link(fstree_t *fs, const char *path,
   Returns 0 on success. On failure, errno is set.
  */
 int fstree_resolve_hard_link(fstree_t *fs, tree_node_t *node);
+
+/*
+  Recursively scan a directory to build a file system tree.
+
+  Returns 0 on success, prints to stderr on failure.
+ */
+int fstree_from_dir(fstree_t *fs, tree_node_t *root,
+		    const char *path, scan_node_callback cb, void *user,
+		    unsigned int flags);
+
+/*
+  Same as fstree_from_dir, but scans a sub-directory inside the specified path.
+
+  Returns 0 on success, prints to stderr on failure.
+ */
+int fstree_from_subdir(fstree_t *fs, tree_node_t *root,
+		       const char *path, const char *subdir,
+		       scan_node_callback cb, void *user, unsigned int flags);
 
 #endif /* FSTREE_H */

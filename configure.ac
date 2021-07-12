@@ -1,5 +1,5 @@
 AC_PREREQ([2.60])
-AC_INIT([squashfs-tools-ng], [1.0.1], [goliath@infraroot.at], squashfs-tools-ng)
+AC_INIT([squashfs-tools-ng], [1.1.2], [goliath@infraroot.at], squashfs-tools-ng)
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE([foreign dist-xz subdir-objects])
 AM_SILENT_RULES([yes])
@@ -11,7 +11,7 @@ AC_PROG_SED
 AC_SYS_LARGEFILE
 AC_CANONICAL_HOST
 
-AC_SUBST([LIBSQUASHFS_SO_VERSION], [1:1:0])
+AC_SUBST([LIBSQUASHFS_SO_VERSION], [3:1:2])
 
 m4_ifndef([PKG_PROG_PKG_CONFIG],
   [m4_fatal([Could not locate the pkg-config autoconf
@@ -42,6 +42,28 @@ UL_WARN_ADD([-Wduplicated-branches])
 UL_WARN_ADD([-Wrestrict])
 UL_WARN_ADD([-Wnull-dereference])
 UL_WARN_ADD([-pedantic])
+UL_WARN_ADD([-Wpedantic])
+UL_WARN_ADD([-Walloc-zero])
+UL_WARN_ADD([-Wcast-align])
+UL_WARN_ADD([-Wcast-align=strict])
+UL_WARN_ADD([-Wcast-qual])
+UL_WARN_ADD([-Wdangling-else])
+UL_WARN_ADD([-Wdate-time])
+UL_WARN_ADD([-Wdouble-promotion])
+UL_WARN_ADD([-Wformat-nonliteral])
+UL_WARN_ADD([-Wformat-security])
+UL_WARN_ADD([-Wformat-signedness])
+UL_WARN_ADD([-Wmissing-format-attribute])
+UL_WARN_ADD([-Wmissing-noreturn])
+UL_WARN_ADD([-Wpacked])
+UL_WARN_ADD([-Wpacked-not-aligned])
+UL_WARN_ADD([-Wredundant-decls])
+UL_WARN_ADD([-Wswitch-default])
+UL_WARN_ADD([-Wswitch-enum])
+UL_WARN_ADD([-Wtrampolines])
+UL_WARN_ADD([-Wundef])
+UL_WARN_ADD([-Wunused-const-variable])
+UL_WARN_ADD([-Wvla])
 
 AC_SUBST([WARN_CFLAGS])
 
@@ -58,6 +80,11 @@ esac
 AM_CONDITIONAL([WINDOWS], [test "x$build_windows" = "xyes"])
 
 ##### config options #####
+
+AC_ARG_WITH([bzip2],
+	[AS_HELP_STRING([--with-bzip2],
+			[Build with bzip2 compression support])],
+	[], [with_bzip2="check"])
 
 AC_ARG_WITH([xz],
 	[AS_HELP_STRING([--with-xz], [Build with xz compression support])],
@@ -102,6 +129,11 @@ AC_ARG_WITH([tools],
 			[Only build libsquashfs, do not build the tools.])],
 	[], [with_tools="yes"])
 
+AC_ARG_ENABLE([custom-alloc],
+	[AS_HELP_STRING([--disable-custom-alloc],
+			[Do not used any custom allocators.])],
+	[], [enable_custom_alloc="yes"])
+
 AC_ARG_ENABLE([corpora-tests],
 	[AS_HELP_STRING([--enable-corpora-tests],
 			[Perform corpora based reproducability tests.])],
@@ -138,6 +170,20 @@ fi
 
 ##### search for dependencies #####
 
+AC_ARG_VAR([BZIP2_CFLAGS], [C compiler flags for lib bzip2])
+AC_ARG_VAR([BZIP2_LIBS], [linker flags for lib bzip2])
+
+AS_IF([test -z "$BZIP2_LIBS" -a "x$with_bzip2" != "xno"], [
+	AC_CHECK_LIB([bz2], [BZ2_bzCompress],
+		     [AC_CHECK_HEADERS([bzlib.h], [BZIP2_LIBS="-lbz2"], [])],
+		     [])
+], [])
+
+AS_IF([test -z "$BZIP2_LIBS"], [AS_IF([test "x$with_bzip2" = "xyes"],
+				    [AC_MSG_ERROR([cannot find Bzip2 libs])],
+				    [with_bzip2="no"])],
+			       [with_bzip2="yes"])
+
 AS_IF([test "x$with_gzip" != "xno" -a "x$with_builtin_zlib" != "xyes"], [
 	PKG_CHECK_MODULES(ZLIB, [zlib], [with_gzip="yes"],
 				[AS_IF([test "x$with_gzip" != "xcheck"],
@@ -169,6 +215,8 @@ AS_IF([test "x$with_zstd" != "xno"], [
 				       [AC_MSG_ERROR([cannot find zstd])],
 				       [with_zstd="no"])])
 ], [])
+
+AC_TEST_ZSTD_STREAM
 
 AS_IF([test "x$with_selinux" != "xno"], [
 	have_selinux="yes"
@@ -206,6 +254,7 @@ AS_IF([test "x$with_pthread" != "xno"], [
 			  [with_pthread="no"])])
 ], [])
 
+AM_CONDITIONAL([WITH_BZIP2], [test "x$with_bzip2" = "xyes"])
 AM_CONDITIONAL([WITH_GZIP], [test "x$with_gzip" = "xyes"])
 AM_CONDITIONAL([WITH_XZ], [test "x$with_xz" = "xyes"])
 AM_CONDITIONAL([WITH_LZ4], [test "x$with_lz4" = "xyes"])
@@ -233,18 +282,15 @@ PKG_CHECK_MODULES(READLINE, [readline], [have_readline="yes"],
 AM_CONDITIONAL([WITH_READLINE], [test "x$have_readline" = "xyes"])
 
 ##### additional checks #####
-AX_COMPILE_CHECK_SIZEOF(size_t)
-AX_COMPILE_CHECK_SIZEOF(int)
-AX_COMPILE_CHECK_SIZEOF(long)
-AX_COMPILE_CHECK_SIZEOF(long long)
-
 AC_CHECK_HEADERS([sys/xattr.h], [], [])
 AC_CHECK_HEADERS([sys/sysinfo.h], [], [])
 AC_CHECK_HEADERS([alloca.h], [], [])
 
-AC_CHECK_FUNCS([strndup getline getsubopt])
+AC_CHECK_FUNCS([strndup getopt getopt_long getsubopt fnmatch])
 
 ##### generate output #####
+
+AM_CONDITIONAL([CUSTOM_ALLOC], [test "x$enable_custom_alloc" = "xyes"])
 
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([lib/sqfs/libsquashfs1.pc])
@@ -252,6 +298,7 @@ AC_CONFIG_FILES([Doxyfile])
 AC_CONFIG_FILES([tests/cantrbry.sh], [chmod +x tests/cantrbry.sh])
 AC_CONFIG_FILES([tests/test_tar_sqfs.sh], [chmod +x tests/test_tar_sqfs.sh])
 AC_CONFIG_FILES([tests/pack_dir_root.sh], [chmod +x tests/pack_dir_root.sh])
+AC_CONFIG_FILES([tests/tarcompress.sh], [chmod +x tests/tarcompress.sh])
 
 AC_OUTPUT([Makefile])
 
@@ -276,9 +323,12 @@ AC_MSG_RESULT([
 	LZO support:       ${with_lzo}
 	LZ4 support:       ${with_lz4}
 	ZSTD support:      ${with_zstd}
+	BZIP2 support:     ${with_bzip2}
 
 	SELinux support:   ${with_selinux}
 	Using pthreads:    ${with_pthread}
+
+	Custom allocators: ${enable_custom_alloc}
 
 	Building tools:    ${with_tools}
 	Doxygen found:     ${with_doxygen}

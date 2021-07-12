@@ -7,6 +7,11 @@ if WITH_LZO
 AM_CPPFLAGS += -DWITH_LZO
 endif
 
+if CUSTOM_ALLOC
+else
+AM_CPPFLAGS += -DNO_CUSTOM_ALLOC
+endif
+
 noinst_LTLIBRARIES =
 noinst_LIBRARIES =
 noinst_PROGRAMS =
@@ -24,13 +29,14 @@ TESTS =
 include lib/zlib/Makemodule.am
 include lib/lz4/Makemodule.am
 include lib/sqfs/Makemodule.am
+include lib/util/Makemodule.am
+include lib/fstream/Makemodule.am
 
 if BUILD_TOOLS
 include lib/fstree/Makemodule.am
 include lib/common/Makemodule.am
 include lib/tar/Makemodule.am
 include lib/compat/Makemodule.am
-include lib/util/Makemodule.am
 include bin/gensquashfs/Makemodule.am
 include bin/rdsquashfs/Makemodule.am
 include bin/sqfs2tar/Makemodule.am

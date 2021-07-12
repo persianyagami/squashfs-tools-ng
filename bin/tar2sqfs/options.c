@@ -19,6 +19,7 @@ static struct option long_opts[] = {
 	{ "no-xattr", no_argument, NULL, 'x' },
 	{ "no-keep-time", no_argument, NULL, 'k' },
 	{ "exportable", no_argument, NULL, 'e' },
+	{ "no-symlink-retarget", no_argument, NULL, 'S' },
 	{ "no-tail-packing", no_argument, NULL, 'T' },
 	{ "force", no_argument, NULL, 'f' },
 	{ "quiet", no_argument, NULL, 'q' },
@@ -27,13 +28,12 @@ static struct option long_opts[] = {
 	{ NULL, 0, NULL, 0 },
 };
 
-static const char *short_opts = "r:c:b:B:d:X:j:Q:sxekfqThV";
+static const char *short_opts = "r:c:b:B:d:X:j:Q:sxekfqSThV";
 
 static const char *usagestr =
 "Usage: tar2sqfs [OPTIONS...] <sqfsfile>\n"
 "\n"
-"Read an uncompressed tar archive from stdin and turn it into a squashfs\n"
-"filesystem image.\n"
+"Read a tar archive from stdin and turn it into a squashfs filesystem image.\n"
 "\n"
 "Possible options:\n"
 "\n"
@@ -43,6 +43,10 @@ static const char *usagestr =
 "                              xattrs, ...) are stored in the root inode.\n"
 "                              If not set and a tarbal has an entry for './'\n"
 "                              or '/', it becomes the root instead.\n"
+"  --no-symlink-retarget, -S   If --root-becomes is used, link targets are\n"
+"                              adjusted if they are prefixed by the root\n"
+"                              path. If this flag is set, symlinks are left\n"
+"                              untouched and only hard links are changed.\n"
 "\n"
 "  --compressor, -c <name>     Select the compressor to use.\n"
 "                              A list of available compressors is below.\n"
@@ -79,19 +83,34 @@ static const char *usagestr =
 "  --quiet, -q                 Do not print out progress reports.\n"
 "  --help, -h                  Print help text and exit.\n"
 "  --version, -V               Print version information and exit.\n"
-"\n"
-"Examples:\n"
-"\n"
-"\ttar2sqfs rootfs.sqfs < rootfs.tar\n"
-"\tzcat rootfs.tar.gz | tar2sqfs rootfs.sqfs\n"
-"\txzcat rootfs.tar.xz | tar2sqfs rootfs.sqfs\n"
 "\n";
 
 bool dont_skip = false;
 bool keep_time = true;
 bool no_tail_pack = false;
+bool no_symlink_retarget = false;
 sqfs_writer_cfg_t cfg;
 char *root_becomes = NULL;
+
+static void input_compressor_print_available(void)
+{
+	int i = FSTREAM_COMPRESSOR_MIN;
+	const char *name;
+
+	fputs("\nSupported tar compression formats:\n", stdout);
+
+	while (i <= FSTREAM_COMPRESSOR_MAX) {
+		name = fstream_compressor_name_from_id(i);
+
+		if (fstream_compressor_exists(i))
+			printf("\t%s\n", name);
+
+		++i;
+	}
+
+	fputs("\tuncompressed\n", stdout);
+	fputc('\n', stdout);
+}
 
 void process_args(int argc, char **argv)
 {
@@ -106,6 +125,9 @@ void process_args(int argc, char **argv)
 			break;
 
 		switch (i) {
+		case 'S':
+			no_symlink_retarget = true;
+			break;
 		case 'T':
 			no_tail_pack = true;
 			break;
@@ -196,6 +218,7 @@ void process_args(int argc, char **argv)
 			printf(usagestr, SQFS_DEFAULT_BLOCK_SIZE,
 			       SQFS_DEVBLK_SIZE);
 			compressor_print_available();
+			input_compressor_print_available();
 			exit(EXIT_SUCCESS);
 		case 'V':
 			print_version("tar2sqfs");

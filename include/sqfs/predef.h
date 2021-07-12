@@ -32,7 +32,9 @@
 #include <stdint.h>
 
 #if defined(_WIN32) || defined(__CYGWIN__)
-	#ifdef SQFS_BUILDING_DLL
+	#if defined(SQFS_STATIC)
+		#define SQFS_API
+	#elif defined(SQFS_BUILDING_DLL)
 		#if defined(__GNUC__) || defined(__clang__)
 			#define SQFS_API __attribute__ ((dllexport))
 		#else
@@ -91,6 +93,7 @@ typedef struct sqfs_frag_table_t sqfs_frag_table_t;
 typedef struct sqfs_block_writer_t sqfs_block_writer_t;
 typedef struct sqfs_block_writer_stats_t sqfs_block_writer_stats_t;
 typedef struct sqfs_block_processor_stats_t sqfs_block_processor_stats_t;
+typedef struct sqfs_block_processor_desc_t sqfs_block_processor_desc_t;
 
 typedef struct sqfs_fragment_t sqfs_fragment_t;
 typedef struct sqfs_dir_header_t sqfs_dir_header_t;
@@ -149,10 +152,55 @@ static SQFS_INLINE void sqfs_destroy(void *obj)
  */
 static SQFS_INLINE void *sqfs_copy(const void *obj)
 {
-	if (((sqfs_object_t *)obj)->copy != NULL)
-		return ((sqfs_object_t *)obj)->copy((sqfs_object_t *)obj);
+	if (((const sqfs_object_t *)obj)->copy != NULL) {
+		return ((const sqfs_object_t *)obj)->
+			copy((const sqfs_object_t *)obj);
+	}
 
 	return NULL;
 }
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief Free a block of memory created by the squashfs library
+ *
+ * Some objects in the squashfs library allocate temporary chunks of memory
+ * and return pointers to them, with the expectation that the user takes care
+ * of freeing them memory again.
+ *
+ * In the past this worked without hitches, because most sane operating systems
+ * have a single, global C library that everything is linked against. On
+ * systems like Windows that have a huge fragmentation of runtime libraries
+ * this fails, because the library and application can easily end up linked
+ * against different runtime libraries, making it impossible for the program
+ * to free the memory.
+ *
+ * To re-create the same situation on Linux, one would have to link a program
+ * and the squashfs library dynamically, while linking at least one of them
+ * statically against the C runtime, or intentionally linking against two
+ * different runtimes.
+ *
+ * This function mitigates the arising problem by exposing the free() function
+ * of the libraries runtime to the application, so it can propperly release
+ * memory again to the correct heap.
+ *
+ * To maintain API/ABI compatibillity, it is guaranteed that for all versions
+ * of libsquashfs with major version 1, this function does nothing other than
+ * call free() on the C runtime that the library was linked against. If just
+ * calling free() works on your system, it will continue to work, and older
+ * application will continue to work with newer versions of libsquashfs 1.x.
+ * Going forward, new applications using libsquashfs should use this function
+ * instead for better portabillity.
+ *
+ * @param ptr A pointer to a memory block returned by a libsquashfs function.
+ */
+SQFS_API void sqfs_free(void *ptr);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* SQFS_PREDEF_H */

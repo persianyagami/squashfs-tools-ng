@@ -20,14 +20,13 @@
 #include "sqfs/io.h"
 
 #include "hash_table.h"
+#include "threadpool.h"
 #include "util.h"
 
 #include <string.h>
 #include <stdlib.h>
-#include <assert.h>
 
-typedef struct chunk_info_t {
-	struct chunk_info_t *next;
+typedef struct {
 	sqfs_u32 index;
 	sqfs_u32 offset;
 	sqfs_u32 size;
@@ -43,7 +42,6 @@ typedef struct sqfs_block_t {
 	struct sqfs_block_t *next;
 	sqfs_inode_generic_t **inode;
 
-	sqfs_u32 proc_seq_num;
 	sqfs_u32 io_seq_num;
 	sqfs_u32 flags;
 	sqfs_u32 size;
@@ -53,21 +51,24 @@ typedef struct sqfs_block_t {
 	   For fragment fragment blocks: fragment table index. */
 	sqfs_u32 index;
 
-	/* For fragment blocks: list of fragments to
-	   consolidate in reverse order. */
-	struct sqfs_block_t *frag_list;
-
 	/* User data pointer */
 	void *user;
 
 	sqfs_u8 data[];
 } sqfs_block_t;
 
+typedef struct worker_data_t {
+	struct worker_data_t *next;
+	sqfs_compressor_t *cmp;
+
+	size_t scratch_size;
+	sqfs_u8 scratch[];
+} worker_data_t;
+
 struct sqfs_block_processor_t {
 	sqfs_object_t obj;
 
 	sqfs_frag_table_t *frag_tbl;
-	sqfs_compressor_t *cmp;
 	sqfs_block_t *frag_block;
 	sqfs_block_writer_t *wr;
 
@@ -83,31 +84,32 @@ struct sqfs_block_processor_t {
 	sqfs_block_t *free_list;
 
 	size_t max_block_size;
+	size_t max_backlog;
+	size_t backlog;
 
 	bool begin_called;
 
-	int (*process_completed_block)(sqfs_block_processor_t *proc,
-				       sqfs_block_t *block);
+	sqfs_file_t *file;
+	sqfs_compressor_t *uncmp;
 
-	int (*process_completed_fragment)(sqfs_block_processor_t *proc,
-					  sqfs_block_t *frag,
-					  sqfs_block_t **blk_out);
+	thread_pool_t *pool;
+	worker_data_t *workers;
 
-	int (*process_block)(sqfs_block_t *block, sqfs_compressor_t *cmp,
-			     sqfs_u8 *scratch, size_t scratch_size);
+	sqfs_block_t *io_queue;
+	sqfs_u32 io_seq_num;
+	sqfs_u32 io_deq_seq_num;
 
-	int (*append_to_work_queue)(sqfs_block_processor_t *proc,
-				    sqfs_block_t *block);
+	sqfs_block_t *current_frag;
+	sqfs_block_t *cached_frag_blk;
+	sqfs_block_t *fblk_in_flight;
+	int fblk_lookup_error;
 
-	int (*sync)(sqfs_block_processor_t *proc);
+	sqfs_u8 scratch[];
 };
 
-SQFS_INTERNAL void block_processor_cleanup(sqfs_block_processor_t *base);
+SQFS_INTERNAL int enqueue_block(sqfs_block_processor_t *proc,
+				sqfs_block_t *blk);
 
-SQFS_INTERNAL int block_processor_init(sqfs_block_processor_t *base,
-				       size_t max_block_size,
-				       sqfs_compressor_t *cmp,
-				       sqfs_block_writer_t *wr,
-				       sqfs_frag_table_t *tbl);
+SQFS_INTERNAL int dequeue_block(sqfs_block_processor_t *proc);
 
 #endif /* INTERNAL_H */

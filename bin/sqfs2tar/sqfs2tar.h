@@ -28,6 +28,7 @@ extern bool no_links;
 extern char *root_becomes;
 extern char **subdirs;
 extern size_t num_subdirs;
+extern int compressor;
 
 extern const char *filename;
 
@@ -37,7 +38,7 @@ void process_args(int argc, char **argv);
 extern sqfs_xattr_reader_t *xr;
 extern sqfs_data_reader_t *data;
 extern sqfs_super_t super;
-extern FILE *out_file;
+extern ostream_t *out_file;
 
 char *assemble_tar_path(char *name, bool is_dir);
 

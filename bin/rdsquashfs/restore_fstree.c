@@ -19,8 +19,10 @@ static int create_node(const sqfs_tree_node_t *n, const char *name, int flags)
 
 	switch (n->inode->base.mode & S_IFMT) {
 	case S_IFDIR:
-		if (!CreateDirectoryW(wpath, NULL))
-			goto fail;
+		if (!CreateDirectoryW(wpath, NULL)) {
+			if (GetLastError() != ERROR_ALREADY_EXISTS)
+				goto fail;
+		}
 		break;
 	case S_IFREG:
 		fh = CreateFileW(wpath, GENERIC_READ,
@@ -186,7 +188,7 @@ static int set_xattr(const char *path, sqfs_xattr_reader_t *xattr,
 
 		if (sqfs_xattr_reader_read_value(xattr, key, &value)) {
 			fputs("Error reading xattr value\n", stderr);
-			free(key);
+			sqfs_free(key);
 			return -1;
 		}
 
@@ -197,8 +199,8 @@ static int set_xattr(const char *path, sqfs_xattr_reader_t *xattr,
 				key->key, path, strerror(errno));
 		}
 
-		free(key);
-		free(value);
+		sqfs_free(key);
+		sqfs_free(value);
 		if (ret)
 			return -1;
 	}

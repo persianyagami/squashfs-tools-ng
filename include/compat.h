@@ -8,18 +8,21 @@
 #define COMPAT_H
 
 #include "sqfs/predef.h"
+#include "config.h"
+
+#include <limits.h>
 
 #if defined(__GNUC__) && __GNUC__ >= 5
 #	define SZ_ADD_OV __builtin_add_overflow
 #	define SZ_MUL_OV __builtin_mul_overflow
 #elif defined(__clang__) && defined(__GNUC__) && __GNUC__ < 5
-#	if SIZEOF_SIZE_T <= SIZEOF_INT
+#	if SIZE_MAX <= UINT_MAX
 #		define SZ_ADD_OV __builtin_uadd_overflow
 #		define SZ_MUL_OV __builtin_umul_overflow
-#	elif SIZEOF_SIZE_T == SIZEOF_LONG
+#	elif SIZE_MAX == ULONG_MAX
 #		define SZ_ADD_OV __builtin_uaddl_overflow
 #		define SZ_MUL_OV __builtin_umull_overflow
-#	elif SIZEOF_SIZE_T == SIZEOF_LONG_LONG
+#	elif SIZE_MAX == ULLONG_MAX
 #		define SZ_ADD_OV __builtin_uaddll_overflow
 #		define SZ_MUL_OV __builtin_umulll_overflow
 #	else
@@ -50,11 +53,11 @@ static inline int _sz_mul_overflow(size_t a, size_t b, size_t *res)
 #	define PRI_U32 "%" PRIu32
 #endif
 
-#if SIZEOF_SIZE_T <= SIZEOF_INT
+#if SIZE_MAX <= UINT_MAX
 #	define PRI_SZ "%u"
-#elif SIZEOF_SIZE_T == SIZEOF_LONG
+#elif SIZE_MAX == ULONG_MAX
 #	define PRI_SZ "%lu"
-#elif defined(_WIN32) && SIZEOF_SIZE_T == 8
+#elif defined(_WIN32) && SIZE_MAX == UINT64_MAX
 #	define PRI_SZ "%I64u"
 #else
 #	error Cannot figure out propper printf specifier for size_t
@@ -163,6 +166,8 @@ int fchownat(int dirfd, const char *path, int uid, int gid, int flags);
 int fchmodat(int dirfd, const char *path, int mode, int flags);
 
 int chdir(const char *path);
+
+void w32_perror(const char *str);
 #else
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -174,14 +179,33 @@ int chdir(const char *path);
 #endif
 #endif
 
-#ifndef HAVE_GETLINE
-#include <stdio.h>
-
-ssize_t getline(char **line, size_t *n, FILE *fp);
-#endif
-
 #ifndef HAVE_STRNDUP
 char *strndup(const char *str, size_t max_len);
+#endif
+
+#ifndef HAVE_GETOPT
+extern char *optarg;
+extern int optind, opterr, optopt, optpos, optreset;
+
+void __getopt_msg(const char *a, const char *b, const char *c, size_t l);
+
+int getopt(int argc, char * const argv[], const char *optstring);
+#endif
+
+#ifndef HAVE_GETOPT_LONG
+struct option {
+	const char *name;
+	int has_arg;
+	int *flag;
+	int val;
+};
+
+#define no_argument        0
+#define required_argument  1
+#define optional_argument  2
+
+int getopt_long(int, char *const *, const char *,
+		const struct option *, int *);
 #endif
 
 #ifndef HAVE_GETSUBOPT
@@ -190,6 +214,17 @@ int getsubopt(char **opt, char *const *keys, char **val);
 
 #if defined(_WIN32) || defined(__WINDOWS__)
 WCHAR *path_to_windows(const char *input);
+#endif
+
+#ifdef HAVE_FNMATCH
+#include <fnmatch.h>
+#else
+#define	FNM_PATHNAME 0x1
+
+#define	FNM_NOMATCH 1
+#define FNM_NOSYS   (-1)
+
+int fnmatch(const char *, const char *, int);
 #endif
 
 #endif /* COMPAT_H */

@@ -7,43 +7,78 @@
 #define SQFS_BUILDING_DLL
 #include "internal.h"
 
-static sqfs_block_t *get_new_block(sqfs_block_processor_t *proc)
+static int get_new_block(sqfs_block_processor_t *proc, sqfs_block_t **out)
 {
 	sqfs_block_t *blk;
+
+	while (proc->backlog >= proc->max_backlog) {
+		int ret = dequeue_block(proc);
+		if (ret != 0)
+			return ret;
+	}
 
 	if (proc->free_list != NULL) {
 		blk = proc->free_list;
 		proc->free_list = blk->next;
 	} else {
 		blk = malloc(sizeof(*blk) + proc->max_block_size);
+		if (blk == NULL)
+			return SQFS_ERROR_ALLOC;
 	}
 
-	if (blk != NULL)
-		memset(blk, 0, sizeof(*blk));
+	memset(blk, 0, sizeof(*blk));
+	*out = blk;
 
-	return blk;
+	proc->backlog += 1;
+	return 0;
 }
 
 static int add_sentinel_block(sqfs_block_processor_t *proc)
 {
-	sqfs_block_t *blk = get_new_block(proc);
+	sqfs_block_t *blk;
+	int ret;
 
-	if (blk == NULL)
-		return SQFS_ERROR_ALLOC;
+	ret = get_new_block(proc, &blk);
+	if (ret != 0)
+		return ret;
 
 	blk->inode = proc->inode;
 	blk->flags = proc->blk_flags | SQFS_BLK_LAST_BLOCK;
 
-	return proc->append_to_work_queue(proc, blk);
+	return enqueue_block(proc, blk);
 }
 
-static int flush_block(sqfs_block_processor_t *proc)
+int enqueue_block(sqfs_block_processor_t *proc, sqfs_block_t *blk)
 {
-	sqfs_block_t *block = proc->blk_current;
+	int status;
 
-	proc->blk_current = NULL;
+	if ((blk->flags & SQFS_BLK_FRAGMENT_BLOCK) &&
+	    proc->file != NULL && proc->uncmp != NULL) {
+		sqfs_block_t *copy = alloc_flex(sizeof(*copy), 1, blk->size);
 
-	return proc->append_to_work_queue(proc, block);
+		if (copy == NULL)
+			return SQFS_ERROR_ALLOC;
+
+		copy->size = blk->size;
+		copy->index = blk->index;
+		memcpy(copy->data, blk->data, blk->size);
+
+		copy->next = proc->fblk_in_flight;
+		proc->fblk_in_flight = copy;
+	}
+
+	if (proc->pool->submit(proc->pool, blk) != 0) {
+		status = proc->pool->get_status(proc->pool);
+
+		if (status == 0)
+			status = SQFS_ERROR_ALLOC;
+
+		blk->next = proc->free_list;
+		proc->free_list = blk;
+		return status;
+	}
+
+	return 0;
 }
 
 int sqfs_block_processor_begin_file(sqfs_block_processor_t *proc,
@@ -91,9 +126,9 @@ int sqfs_block_processor_append(sqfs_block_processor_t *proc, const void *data,
 
 	while (size > 0) {
 		if (proc->blk_current == NULL) {
-			new = get_new_block(proc);
-			if (new == NULL)
-				return SQFS_ERROR_ALLOC;
+			err = get_new_block(proc, &new);
+			if (err != 0)
+				return err;
 
 			proc->blk_current = new;
 			proc->blk_current->flags = proc->blk_flags;
@@ -106,7 +141,9 @@ int sqfs_block_processor_append(sqfs_block_processor_t *proc, const void *data,
 		diff = proc->max_block_size - proc->blk_current->size;
 
 		if (diff == 0) {
-			err = flush_block(proc);
+			err = enqueue_block(proc, proc->blk_current);
+			proc->blk_current = NULL;
+
 			if (err)
 				return err;
 			continue;
@@ -125,9 +162,12 @@ int sqfs_block_processor_append(sqfs_block_processor_t *proc, const void *data,
 		proc->stats.input_bytes_read += diff;
 	}
 
-	if (proc->blk_current != NULL &&
-	    proc->blk_current->size == proc->max_block_size) {
-		return flush_block(proc);
+	if (proc->blk_current->size == proc->max_block_size) {
+		err = enqueue_block(proc, proc->blk_current);
+		proc->blk_current = NULL;
+
+		if (err)
+			return err;
 	}
 
 	return 0;
@@ -160,7 +200,9 @@ int sqfs_block_processor_end_file(sqfs_block_processor_t *proc)
 			proc->blk_current->flags |= SQFS_BLK_IS_FRAGMENT;
 		}
 
-		err = flush_block(proc);
+		err = enqueue_block(proc, proc->blk_current);
+		proc->blk_current = NULL;
+
 		if (err)
 			return err;
 	}
@@ -177,6 +219,7 @@ int sqfs_block_processor_submit_block(sqfs_block_processor_t *proc, void *user,
 				      size_t size)
 {
 	sqfs_block_t *blk;
+	int ret;
 
 	if (proc->begin_called)
 		return SQFS_ERROR_SEQUENCE;
@@ -187,47 +230,14 @@ int sqfs_block_processor_submit_block(sqfs_block_processor_t *proc, void *user,
 	if (flags & ~SQFS_BLK_FLAGS_ALL)
 		return SQFS_ERROR_UNSUPPORTED;
 
-	blk = get_new_block(proc);
-	if (blk == NULL)
-		return SQFS_ERROR_ALLOC;
+	ret = get_new_block(proc, &blk);
+	if (ret != 0)
+		return ret;
 
 	blk->flags = flags | BLK_FLAG_MANUAL_SUBMISSION;
 	blk->user = user;
 	blk->size = size;
 	memcpy(blk->data, data, size);
 
-	return proc->append_to_work_queue(proc, blk);
-}
-
-int sqfs_block_processor_sync(sqfs_block_processor_t *proc)
-{
-	return proc->sync(proc);
-}
-
-int sqfs_block_processor_finish(sqfs_block_processor_t *proc)
-{
-	sqfs_block_t *blk;
-	int status;
-
-	status = proc->sync(proc);
-
-	if (status == 0 && proc->frag_block != NULL) {
-		blk = proc->frag_block;
-		blk->next = NULL;
-		blk->flags |= BLK_FLAG_MANUAL_SUBMISSION;
-		proc->frag_block = NULL;
-
-		status = proc->append_to_work_queue(proc, blk);
-
-		if (status == 0)
-			status = proc->sync(proc);
-	}
-
-	return status;
-}
-
-const sqfs_block_processor_stats_t
-*sqfs_block_processor_get_stats(const sqfs_block_processor_t *proc)
-{
-	return &proc->stats;
+	return enqueue_block(proc, blk);
 }

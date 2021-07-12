@@ -145,15 +145,15 @@ static int write_block_pairs(const sqfs_xattr_writer_t *xwr,
 			     const kv_block_desc_t *blk,
 			     sqfs_u64 *ool_locations)
 {
-	sqfs_u32 key_idx, val_idx;
 	const char *key_str, *value_str;
 	sqfs_s32 diff, total = 0;
 	size_t i, refcount;
 	sqfs_u64 ref;
 
 	for (i = 0; i < blk->count; ++i) {
-		key_idx = GET_KEY(xwr->kv_pairs[blk->start + i]);
-		val_idx = GET_VALUE(xwr->kv_pairs[blk->start + i]);
+		sqfs_u64 ent = ((sqfs_u64 *)xwr->kv_pairs.data)[blk->start + i];
+		sqfs_u32 key_idx = GET_KEY(ent);
+		sqfs_u32 val_idx = GET_VALUE(ent);
 
 		key_str = str_table_get_string(&xwr->keys, key_idx);
 		value_str = str_table_get_string(&xwr->values, val_idx);
@@ -200,14 +200,14 @@ static int write_kv_pairs(const sqfs_xattr_writer_t *xwr,
 	size_t i;
 
 	ool_locations = alloc_array(sizeof(ool_locations[0]),
-				    xwr->values.num_strings);
+				    str_table_count(&xwr->values));
 	if (ool_locations == NULL)
 		return SQFS_ERROR_ALLOC;
 
-	for (i = 0; i < xwr->values.num_strings; ++i)
+	for (i = 0; i < str_table_count(&xwr->values); ++i)
 		ool_locations[i] = 0xFFFFFFFFFFFFFFFFUL;
 
-	for (blk = xwr->kv_blocks; blk != NULL; blk = blk->next) {
+	for (blk = xwr->kv_block_first; blk != NULL; blk = blk->next) {
 		sqfs_meta_writer_get_position(mw, &block, &offset);
 		blk->start_ref = (block << 16) | (offset & 0xFFFF);
 
@@ -237,7 +237,7 @@ static int write_id_table(const sqfs_xattr_writer_t *xwr,
 
 	locations[i++] = 0;
 
-	for (blk = xwr->kv_blocks; blk != NULL; blk = blk->next) {
+	for (blk = xwr->kv_block_first; blk != NULL; blk = blk->next) {
 		memset(&id_ent, 0, sizeof(id_ent));
 		id_ent.xattr = htole64(blk->start_ref);
 		id_ent.count = htole32(blk->count);
@@ -306,7 +306,7 @@ int sqfs_xattr_writer_flush(const sqfs_xattr_writer_t *xwr, sqfs_file_t *file,
 	size_t i, count;
 	int err;
 
-	if (xwr->num_pairs == 0 || xwr->num_blocks == 0) {
+	if (xwr->kv_pairs.used == 0 || xwr->num_blocks == 0) {
 		super->xattr_id_table_start = 0xFFFFFFFFFFFFFFFFUL;
 		super->flags |= SQFS_FLAG_NO_XATTRS;
 		return 0;

@@ -6,43 +6,9 @@
  */
 #include "mkfs.h"
 
-static int set_working_dir(options_t *opt)
-{
-	const char *ptr;
-	char *path;
-
-	if (opt->packdir != NULL) {
-		if (chdir(opt->packdir)) {
-			perror(opt->packdir);
-			return -1;
-		}
-		return 0;
-	}
-
-	ptr = strrchr(opt->infile, '/');
-	if (ptr == NULL)
-		return 0;
-
-	path = strndup(opt->infile, ptr - opt->infile);
-	if (path == NULL) {
-		perror("constructing input directory path");
-		return -1;
-	}
-
-	if (chdir(path)) {
-		perror(path);
-		free(path);
-		return -1;
-	}
-
-	free(path);
-	return 0;
-}
-
 static int pack_files(sqfs_block_processor_t *data, fstree_t *fs,
 		      options_t *opt)
 {
-	sqfs_inode_generic_t **inode_ptr;
 	sqfs_u64 filesize;
 	sqfs_file_t *file;
 	tree_node_t *node;
@@ -52,8 +18,10 @@ static int pack_files(sqfs_block_processor_t *data, fstree_t *fs,
 	int flags;
 	int ret;
 
-	if (set_working_dir(opt))
+	if (opt->packdir != NULL && chdir(opt->packdir) != 0) {
+		perror(opt->packdir);
 		return -1;
+	}
 
 	for (fi = fs->files; fi != NULL; fi = fi->next) {
 		if (fi->input_file == NULL) {
@@ -90,9 +58,7 @@ static int pack_files(sqfs_block_processor_t *data, fstree_t *fs,
 		if (opt->no_tail_packing && filesize > opt->cfg.block_size)
 			flags |= SQFS_BLK_DONT_FRAGMENT;
 
-		inode_ptr = (sqfs_inode_generic_t **)&fi->user_ptr;
-
-		ret = write_data_from_file(path, data, inode_ptr, file, flags);
+		ret = write_data_from_file(path, data, &fi->inode, file, flags);
 		sqfs_destroy(file);
 		free(node_path);
 
@@ -147,17 +113,9 @@ static int relabel_tree_dfs(const char *filename, sqfs_xattr_writer_t *xwr,
 static int read_fstree(fstree_t *fs, options_t *opt, sqfs_xattr_writer_t *xwr,
 		       void *selinux_handle)
 {
-	FILE *fp;
 	int ret;
 
-	fp = fopen(opt->infile, "rb");
-	if (fp == NULL) {
-		perror(opt->infile);
-		return -1;
-	}
-
-	ret = fstree_from_file(fs, opt->infile, fp);
-	fclose(fp);
+	ret = fstree_from_file(fs, opt->infile, opt->packdir);
 
 	if (ret == 0 && selinux_handle != NULL)
 		ret = relabel_tree_dfs(opt->cfg.filename, xwr,
@@ -199,8 +157,10 @@ int main(int argc, char **argv)
 	}
 
 	if (opt.infile == NULL) {
-		if (fstree_from_dir(&sqfs.fs, opt.packdir, opt.dirscan_flags))
+		if (fstree_from_dir(&sqfs.fs, sqfs.fs.root, opt.packdir,
+				    NULL, NULL, opt.dirscan_flags)) {
 			goto out;
+		}
 	} else {
 		if (read_fstree(&sqfs.fs, &opt, sqfs.xwr, sehnd))
 			goto out;
@@ -214,7 +174,7 @@ int main(int argc, char **argv)
 
 	if (opt.infile == NULL) {
 		if (xattrs_from_dir(&sqfs.fs, opt.packdir, sehnd,
-				    sqfs.xwr, opt.dirscan_flags)) {
+				    sqfs.xwr, opt.scan_xattr)) {
 			goto out;
 		}
 	}
@@ -230,5 +190,6 @@ out:
 	sqfs_writer_cleanup(&sqfs, status);
 	if (sehnd != NULL)
 		selinux_close_context_file(sehnd);
+	free(opt.packdir);
 	return status;
 }

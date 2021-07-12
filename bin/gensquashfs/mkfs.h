@@ -34,7 +34,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <dirent.h>
 #include <stdio.h>
 #include <errno.h>
 #include <ctype.h>
@@ -43,30 +42,25 @@ typedef struct {
 	sqfs_writer_cfg_t cfg;
 	unsigned int dirscan_flags;
 	const char *infile;
-	const char *packdir;
 	const char *selinux;
 	bool no_tail_packing;
+
+	/* copied from command line or constructed from infile argument
+	   if not specified. Must be free'd. */
+	char *packdir;
 
 	unsigned int force_uid_value;
 	unsigned int force_gid_value;
 	bool force_uid;
 	bool force_gid;
+
+	bool scan_xattr;
 } options_t;
-
-enum {
-	DIR_SCAN_KEEP_TIME = 0x01,
-
-	DIR_SCAN_ONE_FILESYSTEM = 0x02,
-
-	DIR_SCAN_READ_XATTR = 0x04,
-};
 
 void process_command_line(options_t *opt, int argc, char **argv);
 
-int fstree_from_dir(fstree_t *fs, const char *path, unsigned int flags);
-
 int xattrs_from_dir(fstree_t *fs, const char *path, void *selinux_handle,
-		    sqfs_xattr_writer_t *xwr, unsigned int flags);
+		    sqfs_xattr_writer_t *xwr, bool scan_xattr);
 
 void *selinux_open_context_file(const char *filename);
 

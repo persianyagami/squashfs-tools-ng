@@ -16,22 +16,19 @@
 #include <getopt.h>
 #include <string.h>
 #include <stdio.h>
-#include <fcntl.h>
-
-#ifdef _WIN32
-#include <io.h>
-#endif
+#include <errno.h>
 
 /* options.c */
 extern bool dont_skip;
 extern bool keep_time;
 extern bool no_tail_pack;
+extern bool no_symlink_retarget;
 extern sqfs_writer_cfg_t cfg;
 extern char *root_becomes;
 
 void process_args(int argc, char **argv);
 
 /* process_tarball.c */
-int process_tarball(FILE *input_file, sqfs_writer_t *sqfs);
+int process_tarball(istream_t *input_file, sqfs_writer_t *sqfs);
 
 #endif /* TAR2SQFS_H */

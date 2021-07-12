@@ -70,12 +70,12 @@ static void list_directory(const char *dirname)
 		sqfs_dir_reader_get_root_inode(dr, &root);
 
 		ret = sqfs_dir_reader_find_by_path(dr, root, dirname, &inode);
-		free(root);
+		sqfs_free(root);
 		if (ret)
 			goto fail_resolve;
 
 		ret = sqfs_dir_reader_open_dir(dr, inode, 0);
-		free(inode);
+		sqfs_free(inode);
 		if (ret)
 			goto fail_open;
 	} else {
@@ -85,7 +85,7 @@ static void list_directory(const char *dirname)
 			goto fail_resolve;
 
 		ret = sqfs_dir_reader_open_dir(dr, inode, 0);
-		free(inode);
+		sqfs_free(inode);
 		if (ret)
 			goto fail_open;
 	}
@@ -102,7 +102,7 @@ static void list_directory(const char *dirname)
 		}
 
 		len = ent->size + 1;
-		free(ent);
+		sqfs_free(ent);
 	}
 
 	col_count = 79 / (max_len + 1);
@@ -142,13 +142,15 @@ static void list_directory(const char *dirname)
 		case SQFS_INODE_SOCKET:
 			fputs("\033[01;35m", stdout);
 			break;
+		default:
+			break;
 		}
 
 		len = ent->size + 1;
 
 		printf("%.*s", ent->size + 1, ent->name);
 		fputs("\033[0m", stdout);
-		free(ent);
+		sqfs_free(ent);
 
 		++i;
 		if (i == col_count) {
@@ -231,7 +233,7 @@ static void stat_cmd(const char *filename)
 	if (*filename == '/') {
 		sqfs_dir_reader_get_root_inode(dr, &root);
 		ret = sqfs_dir_reader_find_by_path(dr, root, filename, &inode);
-		free(root);
+		sqfs_free(root);
 		if (ret)
 			goto fail_resolve;
 	} else {
@@ -265,7 +267,8 @@ static void stat_cmd(const char *filename)
 	printf("Inode number: %u\n", inode->base.inode_number);
 
 	mode_to_str(inode->base.mode & ~SQFS_INODE_MODE_MASK, buffer);
-	printf("Access: 0%o/%s\n", inode->base.mode & ~SQFS_INODE_MODE_MASK,
+	printf("Access: 0%o/%s\n",
+	       (unsigned int)inode->base.mode & ~SQFS_INODE_MODE_MASK,
 	       buffer);
 
 	/* resolve and print UID/GID */
@@ -315,13 +318,15 @@ static void stat_cmd(const char *filename)
 		break;
 	case SQFS_INODE_SLINK:
 		printf("Hard link count: %u\n", inode->data.slink.nlink);
-		printf("Link target: %.*s\n", inode->data.slink.target_size,
+		printf("Link target: %.*s\n",
+		       (int)inode->data.slink.target_size,
 		       (const char *)inode->extra);
 		break;
 	case SQFS_INODE_EXT_SLINK:
 		printf("Hard link count: %u\n", inode->data.slink_ext.nlink);
 		printf("Xattr index: 0x%X\n", inode->data.slink_ext.xattr_idx);
-		printf("Link target: %.*s\n", inode->data.slink_ext.target_size,
+		printf("Link target: %.*s\n",
+		       (int)inode->data.slink_ext.target_size,
 		       (const char *)inode->extra);
 		break;
 	case SQFS_INODE_FILE:
@@ -396,14 +401,17 @@ static void stat_cmd(const char *filename)
 			printf("\tIndex: %u\n", idx->index);
 			printf("\tStart block: %u\n", idx->start_block);
 			printf("\tSize: %u\n", idx->size + 1);
-			printf("\tEntry: %.*s\n\n", idx->size + 1, idx->name);
+			printf("\tEntry: %.*s\n\n",
+			       (int)(idx->size + 1), idx->name);
 
-			free(idx);
+			sqfs_free(idx);
 		}
+		break;
+	default:
 		break;
 	}
 
-	free(inode);
+	sqfs_free(inode);
 	return;
 fail_resolve:
 	printf("Error resolving '%s', error code %d\n", filename, ret);
@@ -429,7 +437,7 @@ static void cat_cmd(const char *filename)
 	if (*filename == '/') {
 		sqfs_dir_reader_get_root_inode(dr, &root);
 		ret = sqfs_dir_reader_find_by_path(dr, root, filename, &inode);
-		free(root);
+		sqfs_free(root);
 	} else {
 		ret = sqfs_dir_reader_find_by_path(dr, working_dir,
 						   filename, &inode);
@@ -459,7 +467,7 @@ static void cat_cmd(const char *filename)
 		offset += diff;
 	}
 
-	free(inode);
+	sqfs_free(inode);
 }
 
 /*****************************************************************************/

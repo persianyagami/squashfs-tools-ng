@@ -37,9 +37,9 @@ download() {
 
 ################################### get xz ###################################
 
-PKG_DIR="xz-5.2.4"
+PKG_DIR="xz-5.2.5"
 PKG_TAR="${PKG_DIR}.tar.xz"
-PKG_HASH="9717ae363760dedf573dad241420c5fea86256b65bc21d2cf71b2b12f0544f4b"
+PKG_HASH="3e1e518ffc912f86608a8cb35e4bd41ad1aec210df2a47aaa1f95e7f5576ef56"
 
 download
 
@@ -58,6 +58,41 @@ make clean
 	    --disable-scripts --disable-doc
 make -j
 make install-strip
+popd
+
+################################# get bzip2 ##################################
+
+PKG_DIR="bzip2-1.0.8"
+PKG_TAR="${PKG_DIR}.tar.gz"
+PKG_HASH="ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269"
+
+download
+
+pushd "$PKG_DIR"
+${W32_PREFIX}-gcc -O2 -c blocksort.c
+${W32_PREFIX}-gcc -O2 -c huffman.c
+${W32_PREFIX}-gcc -O2 -c crctable.c
+${W32_PREFIX}-gcc -O2 -c randtable.c
+${W32_PREFIX}-gcc -O2 -c compress.c
+${W32_PREFIX}-gcc -O2 -c decompress.c
+${W32_PREFIX}-gcc -O2 -c bzlib.c
+${W32_PREFIX}-ar cq libbz2.a *.o
+${W32_PREFIX}-ranlib libbz2.a
+cp libbz2.a "$W32_DIR/lib"
+cp bzlib.h "$W32_DIR/include"
+
+rm *.o *.a
+${W64_PREFIX}-gcc -O2 -c blocksort.c
+${W64_PREFIX}-gcc -O2 -c huffman.c
+${W64_PREFIX}-gcc -O2 -c crctable.c
+${W64_PREFIX}-gcc -O2 -c randtable.c
+${W64_PREFIX}-gcc -O2 -c compress.c
+${W64_PREFIX}-gcc -O2 -c decompress.c
+${W64_PREFIX}-gcc -O2 -c bzlib.c
+${W64_PREFIX}-ar cq libbz2.a *.o
+${W64_PREFIX}-ranlib libbz2.a
+cp libbz2.a "$W64_DIR/lib"
+cp bzlib.h "$W64_DIR/include"
 popd
 
 ################################## get lzo ###################################
@@ -83,13 +118,13 @@ popd
 
 ################################## get zstd ##################################
 
-PKG_DIR="zstd-v1.4.4-win32"
+PKG_DIR="zstd-v1.4.9-win32"
 PKG_TAR="${PKG_DIR}.zip"
-PKG_HASH="60d4cd6510e7253d33f47a68554a003b50dba05d1db89e16ef32bc26b126b92c"
+PKG_HASH="9ba7e4126cf614719442c81b1de6498b6d20bf5cb0b866c6898cab7fdfa738c5"
 
 download
 mv "$PKG_DIR/dll/libzstd.dll" "$W32_DIR/bin"
-mv "$PKG_DIR/dll/libzstd.lib" "$W32_DIR/lib/libzstd.dll.a"
+mv "$PKG_DIR/dll/libzstd.dll.a" "$W32_DIR/lib/libzstd.dll.a"
 mv "$PKG_DIR/include"/*.h "$W32_DIR/include"
 
 cat > "$W32_DIR/lib/pkgconfig/libzstd.pc" <<_EOF
@@ -100,18 +135,18 @@ includedir=$W32_DIR/include
 Name: zstd
 Description: fast lossless compression algorithm library
 URL: http://www.zstd.net/
-Version: 1.4.4
+Version: 1.4.9
 Libs: -L$W32_DIR/lib -lzstd
 Cflags: -I$W32_DIR/include
 _EOF
 
-PKG_DIR="zstd-v1.4.4-win64"
+PKG_DIR="zstd-v1.4.9-win64"
 PKG_TAR="${PKG_DIR}.zip"
-PKG_HASH="bb1591db8376fb5360640088e0cc9920c6da9cd0f5fd4e9229316261808c1581"
+PKG_HASH="0bc374dadaec1fa879d5b2329d11b17212fb5251fe119e237a75e72d5e0745e7"
 
 download
 mv "$PKG_DIR/dll/libzstd.dll" "$W64_DIR/bin"
-mv "$PKG_DIR/dll/libzstd.lib" "$W64_DIR/lib/libzstd.dll.a"
+mv "$PKG_DIR/dll/libzstd.dll.a" "$W64_DIR/lib/libzstd.dll.a"
 mv "$PKG_DIR/include"/*.h "$W64_DIR/include"
 
 cat > "$W64_DIR/lib/pkgconfig/libzstd.pc" <<_EOF
@@ -122,7 +157,7 @@ includedir=$W64_DIR/include
 Name: zstd
 Description: fast lossless compression algorithm library
 URL: http://www.zstd.net/
-Version: 1.4.4
+Version: 1.4.9
 Libs: -L$W64_DIR/lib -lzstd
 Cflags: -I$W64_DIR/include
 _EOF
@@ -134,6 +169,8 @@ export PKG_CONFIG_PATH="$W32_DIR/lib/pkgconfig"
 ./autogen.sh
 ./configure CFLAGS="-O2" LZO_CFLAGS="-I$W32_DIR/include" \
 	    LZO_LIBS="-L$W32_DIR/lib -llzo2" \
+	    BZIP2_CFLAGS="-I$W32_DIR/include" \
+	    BZIP2_LIBS="-L$W32_DIR/lib -lbz2" \
 	    --prefix="$W32_DIR" --host="$W32_PREFIX" --with-builtin-lz4 \
 	    --with-builtin-zlib
 cp "$W32_DIR/bin/"*.dll .
@@ -142,6 +179,8 @@ rm *.dll
 
 ./configure CFLAGS="-O2 -DNDEBUG" LZO_CFLAGS="-I$W32_DIR/include" \
 	    LZO_LIBS="-L$W32_DIR/lib -llzo2" \
+	    BZIP2_CFLAGS="-I$W32_DIR/include" \
+	    BZIP2_LIBS="-L$W32_DIR/lib -lbz2" \
 	    --prefix="$W32_DIR" --host="$W32_PREFIX" --with-builtin-lz4 \
 	    --with-builtin-zlib
 make clean
@@ -154,6 +193,8 @@ export PKG_CONFIG_PATH="$W64_DIR/lib/pkgconfig"
 
 ./configure CFLAGS="-O2" LZO_CFLAGS="-I$W64_DIR/include" \
 	    LZO_LIBS="-L$W64_DIR/lib -llzo2" \
+	    BZIP2_CFLAGS="-I$W64_DIR/include" \
+	    BZIP2_LIBS="-L$W64_DIR/lib -lbz2" \
 	    --prefix="$W64_DIR" --host="$W64_PREFIX" --with-builtin-lz4 \
 	    --with-builtin-zlib
 make clean
@@ -163,6 +204,8 @@ rm *.dll
 
 ./configure CFLAGS="-O2 -DNDEBUG" LZO_CFLAGS="-I$W64_DIR/include" \
 	    LZO_LIBS="-L$W64_DIR/lib -llzo2" \
+	    BZIP2_CFLAGS="-I$W64_DIR/include" \
+	    BZIP2_LIBS="-L$W64_DIR/lib -lbz2" \
 	    --prefix="$W64_DIR" --host="$W64_PREFIX" --with-builtin-lz4 \
 	    --with-builtin-zlib
 make clean
@@ -190,3 +233,7 @@ zip -g -r -l "${W32_ZIP_NAME}.zip" "$W32_ZIP_NAME/licenses" $W32_ZIP_NAME/*.md
 zip -r "${W64_ZIP_NAME}.zip" "$W64_ZIP_NAME/bin" "$W64_ZIP_NAME/lib"
 zip -g -r -l "${W64_ZIP_NAME}.zip" "$W64_ZIP_NAME/include"
 zip -g -r -l "${W64_ZIP_NAME}.zip" "$W64_ZIP_NAME/licenses" $W64_ZIP_NAME/*.md
+
+############################# sign the packages ##############################
+gpg -o "${W64_ZIP_NAME}.zip.asc" --detach-sign -a "${W64_ZIP_NAME}.zip"
+gpg -o "${W32_ZIP_NAME}.zip.asc" --detach-sign -a "${W32_ZIP_NAME}.zip"

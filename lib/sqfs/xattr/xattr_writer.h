@@ -19,6 +19,8 @@
 #include "sqfs/io.h"
 
 #include "str_table.h"
+#include "rbtree.h"
+#include "array.h"
 #include "util.h"
 
 #include <stdlib.h>
@@ -26,8 +28,6 @@
 #include <assert.h>
 
 
-#define XATTR_KEY_BUCKETS 31
-#define XATTR_VALUE_BUCKETS 511
 #define XATTR_INITIAL_PAIR_CAP 128
 
 #define MK_PAIR(key, value) (((sqfs_u64)(key) << 32UL) | (sqfs_u64)(value))
@@ -50,13 +50,13 @@ struct sqfs_xattr_writer_t {
 	str_table_t keys;
 	str_table_t values;
 
-	sqfs_u64 *kv_pairs;
-	size_t max_pairs;
-	size_t num_pairs;
+	array_t kv_pairs;
 
 	size_t kv_start;
 
-	kv_block_desc_t *kv_blocks;
+	rbtree_t kv_block_tree;
+	kv_block_desc_t *kv_block_first;
+	kv_block_desc_t *kv_block_last;
 	size_t num_blocks;
 };
 

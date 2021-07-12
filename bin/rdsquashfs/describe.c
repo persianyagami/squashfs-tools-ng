@@ -6,7 +6,7 @@
  */
 #include "rdsquashfs.h"
 
-static int print_name(const sqfs_tree_node_t *n)
+static int print_name(const sqfs_tree_node_t *n, bool dont_escape)
 {
 	char *start, *ptr, *name = sqfs_tree_node_get_path(n);
 
@@ -21,7 +21,8 @@ static int print_name(const sqfs_tree_node_t *n)
 		return -1;
 	}
 
-	if (strchr(name, ' ') == NULL && strchr(name, '"') == NULL) {
+	if (dont_escape || (strchr(name, ' ') == NULL &&
+			    strchr(name, '"') == NULL)) {
 		fputs(name, stdout);
 	} else {
 		fputc('"', stdout);
@@ -52,14 +53,15 @@ static int print_name(const sqfs_tree_node_t *n)
 
 static void print_perm(const sqfs_tree_node_t *n)
 {
-	printf(" 0%o %d %d", n->inode->base.mode & (~S_IFMT), n->uid, n->gid);
+	printf(" 0%o %u %u", (unsigned int)n->inode->base.mode & (~S_IFMT),
+	       n->uid, n->gid);
 }
 
 static int print_simple(const char *type, const sqfs_tree_node_t *n,
 			const char *extra)
 {
 	printf("%s ", type);
-	if (print_name(n))
+	if (print_name(n, false))
 		return -1;
 	print_perm(n);
 	if (extra != NULL)
@@ -91,11 +93,11 @@ int describe_tree(const sqfs_tree_node_t *root, const char *unpack_root)
 			return print_simple("file", root, NULL);
 
 		fputs("file ", stdout);
-		if (print_name(root))
+		if (print_name(root, false))
 			return -1;
 		print_perm(root);
 		printf(" %s/", unpack_root);
-		if (print_name(root))
+		if (print_name(root, true))
 			return -1;
 		fputc('\n', stdout);
 		break;
@@ -111,7 +113,7 @@ int describe_tree(const sqfs_tree_node_t *root, const char *unpack_root)
 			devno = root->inode->data.dev.devno;
 		}
 
-		sprintf(buffer, "%c %d %d",
+		sprintf(buffer, "%c %u %u",
 			S_ISCHR(root->inode->base.mode) ? 'c' : 'b',
 			major(devno), minor(devno));
 		return print_simple("nod", root, buffer);
@@ -126,6 +128,8 @@ int describe_tree(const sqfs_tree_node_t *root, const char *unpack_root)
 			if (describe_tree(n, unpack_root))
 				return -1;
 		}
+		break;
+	default:
 		break;
 	}
 

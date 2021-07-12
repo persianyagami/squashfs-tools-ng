@@ -37,6 +37,8 @@ static int should_skip(int type, unsigned int flags)
 	case SQFS_INODE_FIFO:
 	case SQFS_INODE_EXT_FIFO:
 		return (flags & SQFS_TREE_NO_FIFO);
+	default:
+		break;
 	}
 
 	return 0;
@@ -214,8 +216,8 @@ int sqfs_dir_reader_get_full_hierarchy(sqfs_dir_reader_t *rd,
 	inode = NULL;
 
 	while (path != NULL && *path != '\0') {
-		if (*path == '/' || *path == '\\') {
-			while (*path == '/' || *path == '\\')
+		if (*path == '/') {
+			while (*path == '/')
 				++path;
 			continue;
 		}
@@ -226,7 +228,6 @@ int sqfs_dir_reader_get_full_hierarchy(sqfs_dir_reader_t *rd,
 
 		ptr = strchr(path, '/');
 		if (ptr == NULL) {
-			ptr = strchr(path, '\\');
 
 			if (ptr == NULL) {
 				for (ptr = path; *ptr != '\0'; ++ptr)

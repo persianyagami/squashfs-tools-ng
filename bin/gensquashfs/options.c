@@ -131,6 +131,7 @@ const char *help_details =
 "link <path> <dummy> <dummy> <dummy> <target>\n"
 "pipe <path> <mode> <uid> <gid>\n"
 "sock <path> <mode> <uid> <gid>\n"
+"glob <path> <mode|*> <uid|*> <gid|*> [OPTIONS...] <location>\n"
 "\n"
 "<path>       Absolute path of the entry in the image. Can be put in quotes\n"
 "             if some components contain spaces.\n"
@@ -161,6 +162,11 @@ const char *help_details =
 "    \n"
 "    # file name with a space in it.\n"
 "    file \"/opt/my app/\\\"special\\\"/data\" 0600 0 0\n"
+"    \n"
+"    # collect the contents of ./lib and put it under /usr/lib\n"
+"    glob /usr/lib 0755 0 0 -type d ./lib\n"
+"    glob /usr/lib 0755 0 0 -type f -name \"*.so.*\" ./lib\n"
+"    glob /usr/lib 0777 0 0 -type l -name \"*.so.*\" ./lib\n"
 "\n\n";
 
 void process_command_line(options_t *opt, int argc, char **argv)
@@ -245,7 +251,7 @@ void process_command_line(options_t *opt, int argc, char **argv)
 			break;
 #ifdef HAVE_SYS_XATTR_H
 		case 'x':
-			opt->dirscan_flags |= DIR_SCAN_READ_XATTR;
+			opt->scan_xattr = true;
 			break;
 #endif
 		case 'o':
@@ -267,7 +273,12 @@ void process_command_line(options_t *opt, int argc, char **argv)
 			opt->infile = optarg;
 			break;
 		case 'D':
-			opt->packdir = optarg;
+			free(opt->packdir);
+			opt->packdir = strdup(optarg);
+			if (opt->packdir == NULL) {
+				perror(optarg);
+				exit(EXIT_FAILURE);
+			}
 			break;
 #ifdef WITH_SELINUX
 		case 's':
@@ -316,8 +327,24 @@ void process_command_line(options_t *opt, int argc, char **argv)
 		fputs("Unknown extra arguments specified.\n", stderr);
 		goto fail_arg;
 	}
+
+	/* construct packdir if not specified */
+	if (opt->packdir == NULL && opt->infile != NULL) {
+		const char *split = strrchr(opt->infile, '/');
+
+		if (split != NULL) {
+			opt->packdir = strndup(opt->infile,
+					       split - opt->infile);
+
+			if (opt->packdir == NULL) {
+				perror("constructing input directory path");
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
 	return;
 fail_arg:
 	fputs("Try `gensquashfs --help' for more information.\n", stderr);
+	free(opt->packdir);
 	exit(EXIT_FAILURE);
 }
